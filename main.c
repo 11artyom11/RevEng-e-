@@ -16,15 +16,20 @@
 #include <string.h>
 #include <unistd.h>
 
-#define print_pair_string(NAME, VALUE) 			printf("%s\t <---> \t%s\n", NAME, VALUE);
-#define print_pair_unsigned(NAME, VALUE) 		printf("%s\t <---> \t%u\n", NAME, VALUE);
-#define print_pair_hex(NAME, VALUE) 			printf("%s\t <---> \t0x%x\n", NAME, VALUE);
-#define print_pair_lhex(NAME, VALUE) 			printf("%s\t <---> \t0x%lx\n", NAME, VALUE);
-#define print_pair_uarray(NAME, VALUE, LEN) 	printf("%s <---> ", NAME); \
+#define print_pair_string(NAME, VALUE) 			printf("%s----\t\t-----%s\n", NAME, VALUE);
+#define print_pair_unsigned(NAME, VALUE) 		printf("%s----\t\t-----%u\n", NAME, VALUE);
+#define print_pair_hex(NAME, VALUE) 			printf("%s----\t\t-----0x%x\n", NAME, VALUE);
+#define print_pair_lhex(NAME, VALUE) 			printf("%s----\t\t-----0x%lx\n", NAME, VALUE);
+#define print_pair_uarray(NAME, VALUE, LEN) 	printf("%s-----", NAME); \
 												for (size_t i = 0; i < LEN; i++) { \
 													printf(" 0x%x |", VALUE[i]); \
 												} printf("\n");\
 
+/**
+ * @brief Free allocated array of program header array
+ * 
+ * @param phdr_arr_ptr pointer to array
+ */
 void free_phdr (Elf64_Phdr** phdr_arr_ptr){
 	free(*phdr_arr_ptr);
 	phdr_arr_ptr = NULL;
@@ -35,9 +40,9 @@ void free_phdr (Elf64_Phdr** phdr_arr_ptr){
 /**
  * @brief Load elf header to struct Elf64_Ehdr from FILE
  * 
- * @param[out] e_hdr output elf header struct where binary will be after import  
- * @param[in] path path of binary file to be put into elf64_ehdr struct
- * @param[in] path_len length of path of binary @path
+ * @param[out] e_hdr Output elf header struct where binary will be after import  
+ * @param[in] path Path of binary file to be put into elf64_ehdr struct
+ * @param[in] path_len Length of path of binary @path
  */
 void 
 load_elf64_header (Elf64_Ehdr* e_hdr, FILE* binfile){
@@ -54,11 +59,11 @@ load_elf64_header (Elf64_Ehdr* e_hdr, FILE* binfile){
 /**
  * @brief Load elf64 program table to struct 
  * @attention This function allocates memory for p_hdr array
- * please free it with according function 
+ * 			  please free it with according function 
  * 
- * @param[out] p_hdr loadable program header
- * @param[in] e_hdr  elf header to get info about p_hdr location in binary
- * @param[in] binfile binary file to analyze and get header from 
+ * @param[out] p_hdr Loadable program header
+ * @param[in] e_hdr  Blf header to get info about p_hdr location in binary
+ * @param[in] binfile Binary file to analyze and get header from 
  */
 void
 load_elf64_phdr (Elf64_Phdr** p_hdrs, const Elf64_Ehdr * e_hdr, FILE* binfile){
@@ -84,13 +89,12 @@ load_elf64_phdr (Elf64_Phdr** p_hdrs, const Elf64_Ehdr * e_hdr, FILE* binfile){
 /**
  * @brief Dump elf header structure in human-readable format
  * 
- * @param e_hdr header pointer to dump 
+ * @param e_hdr Header pointer to dump 
  */
 void 
-dump_elf64_header (Elf64_Ehdr* e_hdr)
-{
+dump_elf64_header (const Elf64_Ehdr* e_hdr){
+	printf("\n\n#####################################___ELF__FILE___HEADER____#####################################\n\n");
 	print_pair_uarray("Elf Magic", e_hdr->e_ident, EI_NIDENT); //print elf magic 16 bytes
-
 /* Read architecture built 32/64 or unknown */
 	switch (e_hdr->e_ident[EI_CLASS])
 	{
@@ -254,12 +258,73 @@ dump_elf64_header (Elf64_Ehdr* e_hdr)
 return;
 }
 
-
+/**
+ * @brief Dump single program header in human-readabe format
+ * 
+ * @param p_hdr Program header to dump
+ */
 void 
-dump_elf64_program_header (Elf64_Phdr* p_hdr){
-	print_pair_hex("Type", p_hdr->p_type);
+dump_elf64_program_header (const Elf64_Phdr* p_hdr){
+	switch (p_hdr->p_type)
+	{
+	case PT_LOAD:
+		print_pair_string("Type", "Loadable segment. ");
+		break;
+	case PT_DYNAMIC:
+		print_pair_string("Type", "Dynamic linking information. ");
+		break;
+	case PT_INTERP:
+		print_pair_string("Type", "Interpreter information. ");
+		break;
+	case PT_NOTE:
+		print_pair_string("Type", "Auxiliary information. ");
+		break;
+	case PT_SHLIB:
+		print_pair_string("Type", "Reserved");
+		break;
+	case PT_PHDR:
+		print_pair_string("Type", "Program header itself. ");
+		break;
+	case PT_TLS:
+		print_pair_string("Type", "Thread-Local Storage template. ");
+		break;
+	case PT_LOOS:
+	case PT_HIOS:
+		print_pair_string("Type", "Reserved inclusive range. Operating system specific. ");
+		break;
+	case PT_LOPROC:
+	case PT_HIPROC:
+		print_pair_string("Type", "Reserved inclusive range. Processor specific. ");
+		break;
+	case PT_NULL:
+	default:
+		print_pair_string("Type", "Program header table entry unused. ");
+		break;
+	}
 	print_pair_hex("Flags", p_hdr->p_flags);
 	print_pair_lhex("Offset", p_hdr->p_offset);
+	print_pair_lhex("ViAddress", p_hdr->p_vaddr);
+	print_pair_lhex("PhAddress", p_hdr->p_paddr);
+	print_pair_lhex("FileSize", p_hdr->p_filesz);
+	print_pair_lhex("MemSize", p_hdr->p_memsz);
+	print_pair_lhex("Alignment", p_hdr->p_align);
+
+	return;
+}
+
+/**
+ * @brief Dump N program headers in human-readable format
+ * 
+ * @param p_hdr_arr Array of program header structs to dump
+ * @param n Size of passed array
+ */
+void
+dump_elf64_program_header_n (const Elf64_Phdr* p_hdr_arr, size_t n){
+	printf("\n\n#################################___PROGRAM___HEADER___TABLE___####################################\n\n");
+	for (size_t i = 0; i < n; i++){
+		printf("\n--------------------------------------------%d---\n", i);
+		dump_elf64_program_header(&p_hdr_arr[i]);
+	}
 }
 
 int 
@@ -274,12 +339,10 @@ main(){
 
 	load_elf64_header(&e_hdr, binfile);
 	dump_elf64_header(&e_hdr);
+
 	load_elf64_phdr(&p_hdrs, &e_hdr, binfile);
-	printf("---------------PROGRAM___HEADER___TABLE-----------------\n");
-	for (size_t i = 0; i < e_hdr.e_phnum; i++){
-		dump_elf64_program_header(&p_hdrs[i]);
-		printf("#####################################\n");
-	}
+	dump_elf64_program_header_n(p_hdrs, e_hdr.e_phnum);
+
 	free_phdr(&p_hdrs);
 	fclose(binfile);
 	return 0;
