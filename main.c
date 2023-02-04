@@ -14,6 +14,7 @@
 #include <stdio.h>
 #include <assert.h>
 #include <string.h>
+#include <unistd.h>
 
 #define print_pair_string(NAME, VALUE) 			printf("%s\t <---> \t%s\n", NAME, VALUE);
 #define print_pair_unsigned(NAME, VALUE) 		printf("%s\t <---> \t%u\n", NAME, VALUE);
@@ -23,6 +24,12 @@
 												for (size_t i = 0; i < LEN; i++) { \
 													printf(" 0x%x |", VALUE[i]); \
 												} printf("\n");\
+
+void free_phdr (Elf64_Phdr** phdr_arr_ptr){
+	free(*phdr_arr_ptr);
+	phdr_arr_ptr = NULL;
+	assert(phdr_arr_ptr == NULL);
+}
 
 
 /**
@@ -35,7 +42,7 @@
 void 
 load_elf64_header (Elf64_Ehdr* e_hdr, FILE* binfile){
 	if (1 != fread(e_hdr, sizeof(Elf64_Ehdr), 1, binfile)){
-		printf("Failed to put bin in header struct\n");
+		printf("Failed to read elf header\n");
 		exit(1);
 	}	
 	/* This check is optional */
@@ -46,14 +53,32 @@ load_elf64_header (Elf64_Ehdr* e_hdr, FILE* binfile){
 
 /**
  * @brief Load elf64 program table to struct 
+ * @attention This function allocates memory for p_hdr array
+ * please free it with according function 
  * 
  * @param[out] p_hdr loadable program header
  * @param[in] e_hdr  elf header to get info about p_hdr location in binary
  * @param[in] binfile binary file to analyze and get header from 
  */
-void load_elf64_phdr (Elf64_Phdr* p_hdr, const Elf64_Ehdr const* e_hdr, FILE* binfile)
-{
+void
+load_elf64_phdr (Elf64_Phdr** p_hdrs, const Elf64_Ehdr * e_hdr, FILE* binfile){
+	assert (binfile != NULL);
+	assert (e_hdr != NULL);
 	
+	/* Allocate memory for prgram headers */
+	*p_hdrs = (Elf64_Phdr*)malloc(sizeof(Elf64_Phdr) * e_hdr->e_phnum);
+
+	/* 
+	We need to seek file pointer to program header offset, 
+	as we cannot be sure that file pointer points to program header entry address
+	*/
+	lseek(fileno(binfile), e_hdr->e_phoff, SEEK_SET);
+
+	/* Read from given offset into program header struct */
+	if (1 != fread(*p_hdrs, sizeof(Elf64_Phdr), e_hdr->e_phnum, binfile)){
+		printf("Failed to read program header\n");
+	}
+	return;
 }
 
 /**
@@ -61,7 +86,8 @@ void load_elf64_phdr (Elf64_Phdr* p_hdr, const Elf64_Ehdr const* e_hdr, FILE* bi
  * 
  * @param e_hdr header pointer to dump 
  */
-void dump_elf64_header (Elf64_Ehdr* e_hdr)
+void 
+dump_elf64_header (Elf64_Ehdr* e_hdr)
 {
 	print_pair_uarray("Elf Magic", e_hdr->e_ident, EI_NIDENT); //print elf magic 16 bytes
 
@@ -229,19 +255,34 @@ return;
 }
 
 
+void 
+dump_elf64_program_header (Elf64_Phdr* p_hdr){
+	print_pair_hex("Type", p_hdr->p_type);
+	print_pair_hex("Flags", p_hdr->p_flags);
+	print_pair_lhex("Offset", p_hdr->p_offset);
+}
+
 int 
 main(){
 	FILE* binfile;
-	Elf64_Ehdr hdr;
+	Elf64_Ehdr e_hdr;
+	Elf64_Phdr* p_hdrs;
 	const char path[] = "./a.out";
-	char str[4] = {0};
 	
 	binfile = fopen(path, "rb");
 	assert(binfile != NULL);
 
-	load_elf64_header(&hdr, binfile);
-	dump_elf64_header(&hdr);
-
+	load_elf64_header(&e_hdr, binfile);
+	dump_elf64_header(&e_hdr);
+	load_elf64_phdr(&p_hdrs, &e_hdr, binfile);
+	printf("---------------PROGRAM___HEADER___TABLE-----------------\n");
+	for (size_t i = 0; i < e_hdr.e_phnum; i++){
+		dump_elf64_program_header(&p_hdrs[i]);
+		printf("#####################################\n");
+	}
+	free_phdr(&p_hdrs);
 	fclose(binfile);
 	return 0;
 }
+
+
